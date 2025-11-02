@@ -106,23 +106,48 @@ class DiffBotScene:
     # Scene generation utilities
     def _spawn_plane(self):
         p.loadURDF("plane.urdf")
+        # randomly select a texture file
+        floor_image_folder = "textures/floors/" 
+        texture_files = [f for f in os.listdir(floor_image_folder) if f.endswith(('.png', '.jpg', '.jpeg'))]
+        if texture_files:
+            # random floor texture
+            ground_texture_file = os.path.join(floor_image_folder, self.rng.choice(texture_files))
+            ground_texture_id = p.loadTexture(ground_texture_file)
+            p.changeVisualShape(0, -1, textureUniqueId=ground_texture_id)
 
-        # Addding walls around the arena
-        if self.gui:
-            height = 3
-            L = self.arena
-            pts = [
-                [-L, -L, height], [L, -L, height],
-                [L, -L, height], [L, L, height],
-                [L, L, height], [-L, L, height],
-                [-L, L, height], [-L, -L, height],
-            ]
-            for i in range(0, len(pts), 2):
-                # Adding physical walls
-                col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[L, 0.1, height / 2])
-                pos = [(pts[i][0] + pts[i+1][0]) / 2, (pts[i][1] + pts[i+1][1]) / 2, height / 2]
-                orn = p.getQuaternionFromEuler([0, 0, math.atan2(pts[i+1][1] - pts[i][1], pts[i+1][0] - pts[i][0])])
-                p.createMultiBody(baseMass=0, baseCollisionShapeIndex=col, basePosition=pos, baseOrientation=orn)   
+        # spawn walls
+        height = 4
+        L = self.arena
+        pts = [
+            [-L, -L, height], [L, -L, height],
+            [L, -L, height], [L, L, height],
+            [L, L, height], [-L, L, height],
+            [-L, L, height], [-L, -L, height],
+        ]
+
+        wall_image_folder = "textures/walls/"
+        wall_texture_files = [f for f in os.listdir(wall_image_folder) if f.endswith(('.png', '.jpg', '.jpeg'))]
+        if wall_texture_files:
+            wall_texture_file = os.path.join(wall_image_folder, self.rng.choice(wall_texture_files))
+            wall_texture_id = p.loadTexture(wall_texture_file)
+        
+        for i in range(0, len(pts), 2):
+            col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[L, 0.1, height / 2])
+            vis = -1
+            # random wall texture
+            if wall_texture_files:
+                vis = p.createVisualShape(p.GEOM_BOX, halfExtents=[L, 0.1, height / 2])
+            pos = [(pts[i][0] + pts[i+1][0]) / 2, (pts[i][1] + pts[i+1][1]) / 2, height / 2]
+            orn = p.getQuaternionFromEuler([0, 0, math.atan2(pts[i+1][1] - pts[i][1], pts[i+1][0] - pts[i][0])])
+            wall_id = p.createMultiBody(
+                baseMass=0.0,
+                baseCollisionShapeIndex=col,
+                baseVisualShapeIndex=vis,
+                basePosition=pos,
+                baseOrientation=orn,
+            )
+            if vis != -1 and texture_files:
+                p.changeVisualShape(wall_id, -1, textureUniqueId=wall_texture_id)
 
 
     def _spawn_diffbot(self):
