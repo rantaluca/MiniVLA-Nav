@@ -116,7 +116,7 @@ class DiffBotScene:
             p.changeVisualShape(0, -1, textureUniqueId=ground_texture_id)
 
         # spawn walls
-        height = 4
+        height = 3.0
         L = self.arena
         pts = [
             [-L, -L, height], [L, -L, height],
@@ -146,9 +146,10 @@ class DiffBotScene:
                 basePosition=pos,
                 baseOrientation=orn,
             )
-            if vis != -1 and texture_files:
-                p.changeVisualShape(wall_id, -1, textureUniqueId=wall_texture_id)
 
+            if vis != -1 and wall_texture_files:
+                # fill the wall with texture trying to avoid stretching
+                p.changeVisualShape(wall_id, -1, textureUniqueId=wall_texture_id)
 
     def _spawn_diffbot(self):
         """
