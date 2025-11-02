@@ -68,6 +68,7 @@ class DiffBotScene:
         self._spawn_plane()
         self.robot_id, (self.left_joint, self.right_joint) = self._spawn_diffbot()
         self.object_ids: List[int] = []
+        self._spawn_random_objects(self.N)
 
         # internal state for convenience
         self.last_cmd = (0.0, 0.0)  # (v, omega)
@@ -151,6 +152,76 @@ class DiffBotScene:
                 # fill the wall with texture trying to avoid stretching
                 p.changeVisualShape(wall_id, -1, textureUniqueId=wall_texture_id)
 
+    def _spawn_random_objects(self, n: int):
+            object_urdfs = [
+                "duck_vhacd.urdf",
+                "objects/mug.urdf",
+            ]
+
+            for _ in range(n):
+                # finding a valid position
+                for _try in range(100):
+                    x = self.rng.uniform(-self.arena + 0.2, self.arena - 0.2)
+                    y = self.rng.uniform(-self.arena + 0.2, self.arena - 0.2)
+                    if x * x + y * y > 0.6 ** 2:
+                        break
+                pos_xy = [x, y]
+                yaw = self.rng.uniform(-math.pi, math.pi)
+                orn = p.getQuaternionFromEuler([0, 0, yaw])
+
+                #Choose between URDF object or primitive shape
+                if self.rng.random() > 0.5 and object_urdfs:
+                    
+                    # urdf object
+                    urdf = self.rng.choice(object_urdfs)
+                    scale = self.rng.uniform(1.0, 5.0)
+                    base_pos = [pos_xy[0], pos_xy[1], 0.02]
+                    
+                    bid = p.loadURDF(
+                        urdf,
+                        base_pos,
+                        orn,
+                        useFixedBase=False,
+                        globalScaling=scale,
+                    )
+                    
+                    # friction tweak
+                    p.changeDynamics(bid, -1, lateralFriction=0.8, rollingFriction=0.1, spinningFriction=0.1)
+                    self.object_ids.append(bid)
+
+                else:
+                    # primitive choice
+                    shape = self.rng.choice(["box", "sphere", "cylinder"])
+                    color = [self.rng.uniform(0.1, 0.9) for _ in range(3)] + [1.0]
+
+                    if shape == "box":
+                        hx, hy, hz = [self.rng.uniform(0.05, 0.50) for _ in range(3)]
+                        col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[hx, hy, hz])
+                        vis = p.createVisualShape(p.GEOM_BOX, halfExtents=[hx, hy, hz], rgbaColor=color)
+                        height = 2 * hz
+                    elif shape == "sphere":
+                        r = self.rng.uniform(0.05, 0.50)
+                        col = p.createCollisionShape(p.GEOM_SPHERE, radius=r)
+                        vis = p.createVisualShape(p.GEOM_SPHERE, radius=r, rgbaColor=color)
+                        height = 2 * r
+                    else:  # cylinder
+                        r = self.rng.uniform(0.05, 0.50)
+                        h = self.rng.uniform(0.05, 0.50)
+                        col = p.createCollisionShape(p.GEOM_CYLINDER, radius=r, height=h)
+                        vis = p.createVisualShape(p.GEOM_CYLINDER, radius=r, length=h, rgbaColor=color)
+                        height = h
+
+                    z = max(0.02, 0.5 * height)
+                    bid = p.createMultiBody(
+                        baseMass=self.rng.choice([0.0, 0.5, 1.0]),  
+                        baseCollisionShapeIndex=col,
+                        baseVisualShapeIndex=vis,
+                        basePosition=[pos_xy[0], pos_xy[1], z],
+                        baseOrientation=orn,
+                    )
+                    p.changeDynamics(bid, -1, lateralFriction=0.8, rollingFriction=0.1, spinningFriction=0.1)
+                    self.object_ids.append(bid)
+
     def _spawn_diffbot(self):
         """
         Create a minimal diff-drive robot: base + 2 revolute wheels + 2 spherical caster.
@@ -167,12 +238,12 @@ class DiffBotScene:
         # base
         base_col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[L/2, W/2, H/2])
         base_vis = p.createVisualShape(
-            p.GEOM_BOX, halfExtents=[L/2, W/2, H/2], rgbaColor=[0.25, 0.25, 0.3, 1]
+            p.GEOM_BOX, halfExtents=[L/2, W/2, H/2], rgbaColor=[0.45, 0.45, 0.4, 1]
         )
 
         # Position base 
         base_pos = [0, 0, P.wheel_radius + 0.5 * H]
-        base_orn = [0, 0, 0, 1]
+        base_orn = p.getQuaternionFromEuler([0, 0, math.pi])
 
         # Wheels
         wheel_quat = p.getQuaternionFromEuler([-math.pi / 2, 0, 0])
