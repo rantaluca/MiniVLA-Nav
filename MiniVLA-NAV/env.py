@@ -28,6 +28,11 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 
+# display camera feed in GUI mode
+import cv2
+import threading
+import matplotlib.pyplot as plt
+
 
 @dataclass
 class RobotParams:
@@ -43,7 +48,7 @@ class RobotParams:
         self.wheel_kp: float = 1.0                                       # motor velocity P gain
 
 
-class DiffBotScene:
+class DiffBotEnv:
     def __init__(
         self,
         gui: bool = True,
@@ -98,12 +103,15 @@ class DiffBotScene:
                 cameraTargetPosition=[0, 0, 0],
             )
 
-    def step(self, steps: int = 1):
+    def step(self, steps: int = 1, cmd: Tuple[float, float] = None, camera_feed: bool = False):
         for _ in range(steps):
             p.stepSimulation()
             if self.gui:
                 time.sleep(self.dt)
-
+        if camera_feed:
+            return self._get_camera_image()
+        
+    
     # Scene generation utilities
     def _spawn_plane(self):
         p.loadURDF("plane.urdf")
@@ -114,7 +122,8 @@ class DiffBotScene:
             # random floor texture
             ground_texture_file = os.path.join(floor_image_folder, self.rng.choice(texture_files))
             ground_texture_id = p.loadTexture(ground_texture_file)
-            p.changeVisualShape(0, -1, textureUniqueId=ground_texture_id)
+            # lower the brightness a bit
+            p.changeVisualShape(0, -1, textureUniqueId=ground_texture_id, rgbaColor=[0.7, 0.7, 0.7, 1.0])
 
         # spawn walls
         height = 3.0
@@ -150,13 +159,22 @@ class DiffBotScene:
 
             if vis != -1 and wall_texture_files:
                 # fill the wall with texture trying to avoid stretching
-                p.changeVisualShape(wall_id, -1, textureUniqueId=wall_texture_id)
+                p.changeVisualShape(wall_id, -1, textureUniqueId=wall_texture_id, rgbaColor=[0.7, 0.7, 0.7, 1.0])
 
     def _spawn_random_objects(self, n: int):
-            object_urdfs = [
-                "duck_vhacd.urdf",
-                "objects/mug.urdf",
-            ]
+            # object_urdfs = [
+            #     "duck_vhacd.urdf",
+            #     "objects/mug.urdf",
+            #     "lego/lego.urdf",
+            #     "soccerball.urdf",  
+            #     "urdfs/dinnerware/pan_tefal.urdf",
+            #     "urdfs/dinnerware/plate.urdf",
+            # ]
+
+            # ajouter tout les urdf dans le dossier urdfs/ycb_assets/
+            ycb_urdfs = [os.path.join("urdfs/ycb/ycb_assets/", f) for f in os.listdir("urdfs/ycb/ycb_assets/") if f.endswith('.urdf')]
+            print("YCB URDFS:", ycb_urdfs)
+            object_urdfs = ycb_urdfs
 
             for _ in range(n):
                 # finding a valid position
@@ -170,12 +188,12 @@ class DiffBotScene:
                 orn = p.getQuaternionFromEuler([0, 0, yaw])
 
                 #Choose between URDF object or primitive shape
-                if self.rng.random() > 0.5 and object_urdfs:
+                if self.rng.random() > 0.3 and object_urdfs:
                     
                     # urdf object
                     urdf = self.rng.choice(object_urdfs)
-                    scale = self.rng.uniform(1.0, 5.0)
-                    base_pos = [pos_xy[0], pos_xy[1], 0.02]
+                    scale = self.rng.uniform(0.2, 0.7)
+                    base_pos = [pos_xy[0], pos_xy[1], 0.2]
                     
                     bid = p.loadURDF(
                         urdf,
@@ -355,6 +373,35 @@ class DiffBotScene:
         p.setJointMotorControl2(self.robot_id, self.right_joint, p.VELOCITY_CONTROL, targetVelocity=wr, force=4.0)
 
     # State utilities
+    def _get_camera_image(self):
+        # robot pose
+        pos, orn = p.getBasePositionAndOrientation(self.robot_id)
+
+        # CAM POSE
+        cam_local = [0.25, 0.0, 0.20]       
+        look_local = [0.90, 0.0, 0.15]      
+
+        # world coordinates
+        cam_world, _  = p.multiplyTransforms(pos, orn, cam_local,  [0, 0, 0, 1])
+        look_world, _ = p.multiplyTransforms(pos, orn, look_local, [0, 0, 0, 1])
+
+        # view & projection
+        view = p.computeViewMatrix(cam_world, look_world, [0, 0, 1])
+
+        width, height = 320, 240
+        proj = p.computeProjectionMatrixFOV(
+            fov=70, aspect=width/height, nearVal=0.02, farVal=20.0
+        )
+
+        # render 
+        renderer = p.ER_BULLET_HARDWARE_OPENGL if self.gui else p.ER_TINY_RENDERER
+        w, h, rgba, _, _ = p.getCameraImage(width, height, view, proj, renderer=renderer)
+
+        # convert to OpenCV BGR
+        frame = np.asarray(rgba, dtype=np.uint8).reshape(h, w, 4)
+        bgr = frame[:, :, :3][:, :, ::-1].copy()
+        return bgr
+    
     def get_pose(self) -> Tuple[float, float, float]:
         pos, orn = p.getBasePositionAndOrientation(self.robot_id)
         yaw = p.getEulerFromQuaternion(orn)[2]
@@ -394,11 +441,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gui", action="store_true", help="Run with PyBullet GUI")
     ap.add_argument("--seed", type=int, default=None)
-    ap.add_argument("--n_objects", type=int, default=10)
+    ap.add_argument("--n_objects", type=int, default=5)
     ap.add_argument("--arena", type=float, default=4.5, help="Arena size (m)")
     args = ap.parse_args()
 
-    scene = DiffBotScene(
+    scene = DiffBotEnv(
         gui=args.gui,
         seed=args.seed,
         n_objects=args.n_objects,
@@ -412,11 +459,25 @@ def main():
     print("E forward/D backward, S left/Fx right, X stop, R reset, ESC quit")
 
     if args.gui:
-        # simple interactive loop
         scene.set_cmd(0.0, 0.0)
+
+        # Create a resizable window once (prevents Mac freeze issues)
+        cv2.namedWindow("DiffBot Camera", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("DiffBot Camera", 448, 448)
+
         while True:
             scene.teleop_once()
-            scene.step(1)
+            frame_bgr = scene.step(1, camera_feed=True)  # returns BGR
+
+            if frame_bgr is not None:
+                cv2.imshow("DiffBot Camera", frame_bgr)
+
+            # Exit on ESC or when the window is closed
+            k = cv2.waitKey(1) & 0xFF
+            if k == 27 or cv2.getWindowProperty("DiffBot Camera", cv2.WND_PROP_VISIBLE) < 1:
+                break
+
+    cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
