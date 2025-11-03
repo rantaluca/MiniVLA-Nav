@@ -44,7 +44,7 @@ class RobotParams:
         self.track_width: float = 0.24                                   # distance between wheel centers (m)
         self.base_mass: float = 2.0                                      # kg
         self.wheel_mass: float = 0.15                                    # kg
-        self.max_wheel_speed: float = 10.0                               # rad/s (for teleop clamp)
+        self.max_wheel_speed: float = 20.0                               # rad/s (for teleop clamp)
         self.wheel_kp: float = 1.0                                       # motor velocity P gain
 
 
@@ -52,7 +52,7 @@ class DiffBotEnv:
     def __init__(
         self,
         gui: bool = True,
-        seed: int = 42,
+        seed: int = None,
         n_objects: int = 10,
         arena_half_size: float = 4.5,
         robot_params: RobotParams = RobotParams(),
@@ -104,6 +104,8 @@ class DiffBotEnv:
             )
 
     def step(self, steps: int = 1, cmd: Tuple[float, float] = None, camera_feed: bool = False):
+        if cmd is not None:
+            self.set_cmd(cmd[0], cmd[1])
         for _ in range(steps):
             p.stepSimulation()
             if self.gui:
@@ -125,41 +127,41 @@ class DiffBotEnv:
             # lower the brightness a bit
             p.changeVisualShape(0, -1, textureUniqueId=ground_texture_id, rgbaColor=[0.7, 0.7, 0.7, 1.0])
 
-        # spawn walls
-        height = 3.0
-        L = self.arena
-        pts = [
-            [-L, -L, height], [L, -L, height],
-            [L, -L, height], [L, L, height],
-            [L, L, height], [-L, L, height],
-            [-L, L, height], [-L, -L, height],
-        ]
+        # # spawn walls
+        # height = 3.0
+        # L = self.arena
+        # pts = [
+        #     [-L, -L, height], [L, -L, height],
+        #     [L, -L, height], [L, L, height],
+        #     [L, L, height], [-L, L, height],
+        #     [-L, L, height], [-L, -L, height],
+        # ]
 
-        wall_image_folder = "textures/walls/"
-        wall_texture_files = [f for f in os.listdir(wall_image_folder) if f.endswith(('.png', '.jpg', '.jpeg'))]
-        if wall_texture_files:
-            wall_texture_file = os.path.join(wall_image_folder, self.rng.choice(wall_texture_files))
-            wall_texture_id = p.loadTexture(wall_texture_file)
+        # wall_image_folder = "textures/walls/"
+        # wall_texture_files = [f for f in os.listdir(wall_image_folder) if f.endswith(('.png', '.jpg', '.jpeg'))]
+        # if wall_texture_files:
+        #     wall_texture_file = os.path.join(wall_image_folder, self.rng.choice(wall_texture_files))
+        #     wall_texture_id = p.loadTexture(wall_texture_file)
         
-        for i in range(0, len(pts), 2):
-            col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[L, 0.1, height / 2])
-            vis = -1
-            # random wall texture
-            if wall_texture_files:
-                vis = p.createVisualShape(p.GEOM_BOX, halfExtents=[L, 0.1, height / 2])
-            pos = [(pts[i][0] + pts[i+1][0]) / 2, (pts[i][1] + pts[i+1][1]) / 2, height / 2]
-            orn = p.getQuaternionFromEuler([0, 0, math.atan2(pts[i+1][1] - pts[i][1], pts[i+1][0] - pts[i][0])])
-            wall_id = p.createMultiBody(
-                baseMass=0.0,
-                baseCollisionShapeIndex=col,
-                baseVisualShapeIndex=vis,
-                basePosition=pos,
-                baseOrientation=orn,
-            )
+        # for i in range(0, len(pts), 2):
+        #     col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[L, 0.1, height / 2])
+        #     vis = -1
+        #     # random wall texture
+        #     if wall_texture_files:
+        #         vis = p.createVisualShape(p.GEOM_BOX, halfExtents=[L, 0.1, height / 2])
+        #     pos = [(pts[i][0] + pts[i+1][0]) / 2, (pts[i][1] + pts[i+1][1]) / 2, height / 2]
+        #     orn = p.getQuaternionFromEuler([0, 0, math.atan2(pts[i+1][1] - pts[i][1], pts[i+1][0] - pts[i][0])])
+        #     wall_id = p.createMultiBody(
+        #         baseMass=0.0,
+        #         baseCollisionShapeIndex=col,
+        #         baseVisualShapeIndex=vis,
+        #         basePosition=pos,
+        #         baseOrientation=orn,
+        #     )
 
-            if vis != -1 and wall_texture_files:
-                # fill the wall with texture trying to avoid stretching
-                p.changeVisualShape(wall_id, -1, textureUniqueId=wall_texture_id, rgbaColor=[0.7, 0.7, 0.7, 1.0])
+        #     if vis != -1 and wall_texture_files:
+        #         # fill the wall with texture trying to avoid stretching
+        #         p.changeVisualShape(wall_id, -1, textureUniqueId=wall_texture_id, rgbaColor=[0.7, 0.7, 0.7, 1.0])
 
     def _spawn_random_objects(self, n: int):
             # object_urdfs = [
@@ -188,7 +190,7 @@ class DiffBotEnv:
                 orn = p.getQuaternionFromEuler([0, 0, yaw])
 
                 #Choose between URDF object or primitive shape
-                if self.rng.random() > 0.3 and object_urdfs:
+                if self.rng.random() > 0.99 and object_urdfs:
                     
                     # urdf object
                     urdf = self.rng.choice(object_urdfs)
@@ -260,7 +262,7 @@ class DiffBotEnv:
         )
 
         # Position base 
-        base_pos = [0, 0, P.wheel_radius + 0.5 * H]
+        base_pos = [1.0, 0, P.wheel_radius + 0.5 * H]
         base_orn = p.getQuaternionFromEuler([0, 0, math.pi])
 
         # Wheels
@@ -388,7 +390,7 @@ class DiffBotEnv:
         # view & projection
         view = p.computeViewMatrix(cam_world, look_world, [0, 0, 1])
 
-        width, height = 320, 240
+        width, height = 720, 480
         proj = p.computeProjectionMatrixFOV(
             fov=70, aspect=width/height, nearVal=0.02, farVal=20.0
         )
@@ -441,7 +443,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gui", action="store_true", help="Run with PyBullet GUI")
     ap.add_argument("--seed", type=int, default=None)
-    ap.add_argument("--n_objects", type=int, default=5)
+    ap.add_argument("--n_objects", type=int, default=20)
     ap.add_argument("--arena", type=float, default=4.5, help="Arena size (m)")
     args = ap.parse_args()
 
