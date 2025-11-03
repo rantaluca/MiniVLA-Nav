@@ -175,7 +175,7 @@ class DiffBotEnv:
 
             # ajouter tout les urdf dans le dossier urdfs/ycb_assets/
             ycb_urdfs = [os.path.join("urdfs/ycb/ycb_assets/", f) for f in os.listdir("urdfs/ycb/ycb_assets/") if f.endswith('.urdf')]
-            print("YCB URDFS:", ycb_urdfs)
+            #print("YCB URDFS:", ycb_urdfs)
             object_urdfs = ycb_urdfs
 
             for _ in range(n):

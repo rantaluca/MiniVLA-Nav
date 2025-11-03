@@ -1,3 +1,6 @@
 [submodule "MiniVLA-NAV/urdfs/ycb"]
 	path = MiniVLA-NAV/urdfs/ycb
 	url = https://github.com/kwonathan/ycb_urdfs.git
+[submodule "urdfs/ycb"]
+	path = urdfs/ycb
+	url = https://github.com/kwonathan/ycb_urdfs.git
