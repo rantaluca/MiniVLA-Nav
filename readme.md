@@ -2,9 +2,18 @@
 
 <div align="center">
   <h2>Mini Vision-Language-Action Navigation with CLIP and PyBullet</h2>
-  <img src="demos/coffee.gif" width="600">
-<h4>Given prompt: "an object useful to drink coffee"</h4>
-
+  <table>
+    <tr>
+      <td align="center">
+        <img src="demos/coffee.gif" width="400"><br>
+        <h4>Given prompt: "an object useful to drink coffee"</h4>
+      </td>
+      <td align="center">
+        <img src="demos/red_mug.gif" width="400"><br>
+        <h4>Given prompt: "go to the red mug"</h4>
+      </td>
+    </tr>
+  </table>
 </div>
 <p align="center">
   <a href="https://www.python.org/">
