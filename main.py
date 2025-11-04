@@ -20,7 +20,7 @@ from PIL import ImageDraw
 
 
 robot_params = RobotParams()
-env = DiffBotEnv(gui=True, n_objects=15, seed=185, robot_params=robot_params)
+env = DiffBotEnv(gui=True, n_objects=15, seed=None, robot_params=robot_params)
 
 # Load CLIP model
 device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
@@ -62,7 +62,7 @@ def _score_sectors(img, text_emb, K=7):
         sims = (img_feats @ text_emb.T).squeeze(1)                    # [K]
     return sims, boxes
 
-def _sector_to_cmd(sims, K, fov_deg=120.0, v_max=10.00, w_gain=3.5, conf_th=0.12):
+def _sector_to_cmd(sims, K, fov_deg=90.0, v_max=15.00, w_gain=7.5, conf_th=0.08):
     """
     sims: [K] cosine scores. Pick argmax -> bearing in [-FOV/2, +FOV/2] (radians).
     Forward speed scales with confidence and reduces when turning sharply.
@@ -84,8 +84,8 @@ def _sector_to_cmd(sims, K, fov_deg=120.0, v_max=10.00, w_gain=3.5, conf_th=0.12
         v = v_max * conf * max(0.0, math.cos(bearing)) 
     return v, w, idx, conf
 
-SMOOTH_v = 0.5
-SMOOTH_w = 0.15
+SMOOTH_v = 0.15
+SMOOTH_w = 0.05
 K_SECTORS = 9
 
 def compute_next_cmd(v, w, camera_feed, prompt):
@@ -101,12 +101,12 @@ def compute_next_cmd(v, w, camera_feed, prompt):
     #print(sims)  #
 
     # Convert chosen sector to bearing & forward speed
-    #stop if all similarity scores are equal
+    #spin if no positive matches
     if torch.all(torch.abs(sims - sims[0]) < 0.03):
         # no positive matches
-        v_cmd, w_cmd, idx, conf = 0.0, 0.0, -1, 0.0
+        v_cmd, w_cmd, idx, conf = 0.0, 0.6, -1, 0.0
     else:
-        v_cmd, w_cmd, idx, conf = _sector_to_cmd(sims, K=K_SECTORS, fov_deg=90.0)
+        v_cmd, w_cmd, idx, conf = _sector_to_cmd(sims, K=K_SECTORS, fov_deg=120.0)
     print(f"Chosen sector: {idx}, v_cmd: {v_cmd:.2f}, w_cmd: {w_cmd:.2f}, conf: {conf:.2f}")
 
     # Smooth commands

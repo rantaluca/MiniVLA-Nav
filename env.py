@@ -190,12 +190,12 @@ class DiffBotEnv:
                 orn = p.getQuaternionFromEuler([0, 0, yaw])
 
                 #Choose between URDF object or primitive shape
-                if self.rng.random() > 0.99 and object_urdfs:
+                if self.rng.random() > 0.5 and object_urdfs:
                     
                     # urdf object
                     urdf = self.rng.choice(object_urdfs)
-                    scale = self.rng.uniform(0.2, 0.7)
-                    base_pos = [pos_xy[0], pos_xy[1], 0.2]
+                    scale = self.rng.uniform(0.4, 0.6)
+                    base_pos = [pos_xy[0], pos_xy[1], 0.6]
                     
                     bid = p.loadURDF(
                         urdf,
