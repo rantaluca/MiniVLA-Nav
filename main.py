@@ -102,9 +102,12 @@ def compute_next_cmd(v, w, camera_feed, prompt):
 
     # Convert chosen sector to bearing & forward speed
     #spin if no positive matches
-    if torch.all(torch.abs(sims - sims[0]) < 0.03):
+    if torch.all(torch.abs(sims - sims[0]) < 0.06):
         # no positive matches
-        v_cmd, w_cmd, idx, conf = 0.0, 0.6, -1, 0.0
+        if torch.all(sims < 0.2):
+            v_cmd, w_cmd, idx, conf = 0.0, 0.0, -1, 0.0
+        else:
+            v_cmd, w_cmd, idx, conf = 0.0, 0.6, -1, 0.0
     else:
         v_cmd, w_cmd, idx, conf = _sector_to_cmd(sims, K=K_SECTORS, fov_deg=120.0)
     print(f"Chosen sector: {idx}, v_cmd: {v_cmd:.2f}, w_cmd: {w_cmd:.2f}, conf: {conf:.2f}")
