@@ -2,7 +2,7 @@
 
 <div align="center">
   <h2>Mini Vision-Language-Action Navigation with CLIP and PyBullet</h2>
-  <a href="demos/coffee.mp4">Demo</a>
+  <img src="demos/coffee.gif" width="600">
 <h4>Given prompt: "an object useful to drink coffee"</h4>
 
 </div>
