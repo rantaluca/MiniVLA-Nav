@@ -58,7 +58,7 @@ The algorithm can also exhibit **exploratory behavior**, as illustrated in the *
 |<img src="demos/red_ball.gif" width="400"><br/><sub><i>Prompt: "big red ball on the ground"</i></sub>|<img src="demos/coffee.gif" width="400"><br/><sub><i>Prompt: "an object useful to drink coffee"</i></sub> |
 |<img src="demos/searching_mug.gif" width="400"><br/><sub><i>Prompt: "an orange mug on the grass"</i></sub> | <img src="demos/cyan_ball.gif" width="400"><br/><sub><i>Prompt: "a small cyan ball on the ground"</i></sub> |
 | <img src="demos/fruits.gif" width="400"><br/><sub><i>Prompt: "find the biggest fruit"</i></sub> | <img src="demos/pear.gif" width="400"><br/><sub><i>Prompt: "the opposite of an apple"</i></sub> |
-| <img src="demos/plane.gif" width="400"><br/><sub><i>Prompt: "a toy that can fly"</i></sub> | <img src="demos/baseball.gif" width="400"><br/><sub><i>Prompt: "a baseball"</i></sub>|
+| <img src="demos/plane.gif" width="400"><br/><sub><i>Prompt: "a toy that can fly"</i></sub> | <img src="demos/baseball.gif" width="400"><br/><sub><i>Prompt: "a ball that is used in a sport"</i></sub>|
 | <img src="demos/sauce.gif" width="400"><br/><sub><i>Prompt: "an object that contains sauce"</i></sub> | <img src="demos/crackers.gif" width="400"><br/><sub><i>Prompt: "crackers"</i></sub>|
 | <img src="demos/sun.gif" width="400"><br/><sub><i>Prompt: "a ball that has the same color as the sun"</i></sub> |  |
 
