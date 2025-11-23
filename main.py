@@ -12,13 +12,10 @@ import pybullet_data
 from env import DiffBotEnv, RobotParams
 import matplotlib.pyplot as plt
 import torch
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageChops
 import clip
 from IPython.display import display
-from PIL import Image  
-from PIL import ImageDraw 
-
-
+from sklearn.cluster import KMeans
 robot_params = RobotParams()
 env = DiffBotEnv(gui=True, n_objects=15, seed=None, robot_params=robot_params)
 
@@ -38,6 +35,62 @@ def _encode_text(prompt):
         txt = clip_model.encode_text(tokens)
         txt = txt / txt.norm(dim=-1, keepdim=True)
     return txt  # [1, d]
+
+def plot_sector(comp):
+    if not hasattr(plot_sector, "_im"):
+        plt.ion()
+        plot_sector._fig, plot_sector._ax = plt.subplots()
+        plot_sector._im = plot_sector._ax.imshow(np.array(comp))
+        plot_sector._ax.axis("off")
+        plt.show(block=False)
+    else:
+        # Update existing image
+        plot_sector._im.set_data(np.array(comp))
+        plot_sector._fig.canvas.draw()
+
+
+
+def segment_kmeans(image_np, K=5):
+    # image_np: HxWx3 uint8
+    H, W, _ = image_np.shape
+    pixels = image_np.reshape(-1, 3)
+
+    # K-means
+    kmeans = KMeans(n_clusters=K, n_init=3)
+    labels = kmeans.fit_predict(pixels)
+
+    # Re-forme les labels en image
+    label_img = labels.reshape(H, W)
+    return label_img, kmeans.cluster_centers_
+
+
+def score_segments(img, text_emb):
+    """
+    Segment the image using SAM, return CLIP cosine scores per segment.
+    """
+    img_np = np.array(img)
+    
+    # segment using k-means
+    K = 10 #ne prend que les K segments les plus grands
+    label_img, centers = segment_kmeans(img_np, K=K)
+    masks = [(label_img == i).astype(np.uint8) for i in range(K)]
+
+    crops = []
+    for mask in masks:
+        # extract segment
+        comp = Image.fromarray((mask * 255).astype(np.uint8)).convert("L")
+        segment = ImageChops.multiply(img, comp.convert("RGB"))
+        crops.append(clip_preprocess(segment))
+    imgs = torch.stack(crops).to(device)
+
+    with torch.no_grad():
+        img_feats = clip_model.encode_image(imgs)
+        #(img_feats.shape)  #
+        img_feats = img_feats / img_feats.norm(dim=-1, keepdim=True)  # [N, d]
+        sims = (img_feats @ text_emb.T).squeeze(1)                    # [N]
+    return sims, masks
+
+
 
 def _score_sectors(img, text_emb, K=7):
     """
@@ -88,6 +141,27 @@ SMOOTH_v = 0.15
 SMOOTH_w = 0.05
 K_SECTORS = 9
 
+def _seg_to_cmd(sims, masks, fov_deg=120.0, v_max=15.0, w_gain=7.5, conf_th=0.08):
+    """
+    Computes command from segment scores.
+    """
+    N = len(sims)
+    idx = int(torch.argmax(sims).item())
+    fov = math.radians(fov_deg)
+    # center angles for segments
+    bearings = np.linspace(-fov/2, fov/2, N)
+    bearing = float(bearings[idx])
+    conf = float(torch.softmax(sims, dim=0)[idx])
+    # turn rate
+    w = - w_gain * bearing
+
+    # forward speed: zero if low confidence; zotherwise slower when turning
+    if conf < conf_th:
+        v = 0.1
+    else:
+        v = v_max * conf * max(0.0, math.cos(bearing)) 
+    return v, w, idx, conf
+
 def compute_next_cmd(v, w, camera_feed, prompt):
     global text_emb, _prev_v, _prev_w
     if camera_feed is None:
@@ -97,7 +171,8 @@ def compute_next_cmd(v, w, camera_feed, prompt):
 
     #converts the image and computes the sector scores
     pil = _to_pil(camera_feed)
-    sims, _ = _score_sectors(pil, text_emb, K=K_SECTORS)
+    #sims, _ = _score_sectors(pil, text_emb, K=K_SECTORS)
+    sims, masks = score_segments(pil, text_emb)
     #print(sims)  #
 
     # Convert chosen sector to bearing & forward speed
@@ -109,25 +184,22 @@ def compute_next_cmd(v, w, camera_feed, prompt):
         else:
             v_cmd, w_cmd, idx, conf = 0.0, 0.6, -1, 0.0
     else:
-        v_cmd, w_cmd, idx, conf = _sector_to_cmd(sims, K=K_SECTORS, fov_deg=120.0)
+        #v_cmd, w_cmd, idx, conf = _sector_to_cmd(sims, K=K_SECTORS, fov_deg=120.0)
+        v_cmd, w_cmd, idx, conf = _seg_to_cmd(sims, masks, fov_deg=120.0)
     print(f"Chosen sector: {idx}, v_cmd: {v_cmd:.2f}, w_cmd: {w_cmd:.2f}, conf: {conf:.2f}")
 
     # Smooth commands
     v_sm = SMOOTH_v * _prev_v + (1.0 - SMOOTH_v) * v_cmd
     w_sm = SMOOTH_w * _prev_w + (1.0 - SMOOTH_w) * w_cmd
     _prev_v, _prev_w = v_sm, w_sm
-    return float(v_sm), float(w_sm), sims
+    return float(v_sm), float(w_sm), sims, masks
 
-import numpy as np
-import matplotlib.pyplot as plt
-from PIL import Image, ImageDraw
-
-def plot_camera_feed(frame_bgr, sims=None):
+def plot_camera_feed(frame_bgr, sims=None, masks=None):
     rgb = frame_bgr[:, :, ::-1]
     pil = Image.fromarray(rgb)
 
     # Draw sector lines and scores
-    if sims is not None:
+    if sims is not None and masks is None :
         W, H = pil.size
         w = W // K_SECTORS
         draw = ImageDraw.Draw(pil)
@@ -135,6 +207,19 @@ def plot_camera_feed(frame_bgr, sims=None):
             x = i * w
             draw.line([(x, 0), (x, H)], fill=(0, 255, 0), width=2)
             draw.text((x + 5, 5), f"{sims[i].item():.2f}", fill=(255, 0, 0))
+
+    if masks is not None:
+        draw = ImageDraw.Draw(pil)
+        for i, mask in enumerate(masks):
+            color = tuple(np.random.randint(0, 255, size=3).tolist())
+            # Create an RGBA image for the mask
+            mask_img = Image.fromarray((mask * 255).astype(np.uint8)).convert("L")
+            colored_mask = Image.new("RGBA", pil.size, color + (0,))
+            colored_mask.putalpha(mask_img)
+            pil = Image.alpha_composite(pil.convert("RGBA"), colored_mask)
+            # Draw score
+            draw.text((10, 10 + i * 20), f"{sims[i].item():.2f}", fill=color)
+    
 
     # Initialize live window
     if not hasattr(plot_camera_feed, "_im"):
@@ -148,7 +233,6 @@ def plot_camera_feed(frame_bgr, sims=None):
         plot_camera_feed._im.set_data(np.array(pil))
         plot_camera_feed._fig.canvas.draw()
 
-
 def main():
     global v, w
     v, w = 0.0, 0.0
@@ -160,9 +244,9 @@ def main():
     while True:
         camera_feed = env.step(steps=30, cmd=(v, w), camera_feed=True)
         # plot the camera feed
-        v,w, sims = compute_next_cmd(v, w, camera_feed, prompt)
-        plot_camera_feed(camera_feed, sims)
-    
+        v,w, sims, masks = compute_next_cmd(v, w, camera_feed, prompt)
+        plot_camera_feed(camera_feed, sims, masks)
+
 if __name__ == "__main__":
     try:
         main()
