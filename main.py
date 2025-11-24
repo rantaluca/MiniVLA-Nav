@@ -50,18 +50,38 @@ def plot_sector(comp):
 
 
 
-def segment_kmeans(image_np, K=5):
-    # image_np: HxWx3 uint8
-    H, W, _ = image_np.shape
-    pixels = image_np.reshape(-1, 3)
+import torch
+import numpy as np
+from PIL import Image
+import torch.nn.functional as F
 
-    # K-means
-    kmeans = KMeans(n_clusters=K, n_init=3)
-    labels = kmeans.fit_predict(pixels)
+def clip_heatmap(image_pil, txt_emb, model, preprocess, device):
+    # Preprocess image
+    img_in = preprocess(image_pil).unsqueeze(0).to(device)
+    img_in.requires_grad_(True)
+    
+    # Preprocess text
+    txt_emb_norm = txt_emb / txt_emb.norm(dim=-1, keepdim=True)
 
-    # Re-forme les labels en image
-    label_img = labels.reshape(H, W)
-    return label_img, kmeans.cluster_centers_
+    # Forward pass to get image embedding
+    img_emb = model.encode_image(img_in)
+    img_emb = img_emb / img_emb.norm(dim=-1, keepdim=True)
+
+    # Similarity
+    sim = (img_emb @ txt_emb_norm.T)
+    
+    # Backpropagate
+    sim.backward()
+
+    # Get gradients of the image
+    grads = img_in.grad[0]              # (3,H,W)
+    grads = grads.mean(dim=0).cpu().numpy()
+
+    # Resize grads to image resolution
+    grads = (grads - grads.min()) / (grads.max() - grads.min() + 1e-6)
+    heatmap = Image.fromarray((grads * 255).astype(np.uint8)).resize(image_pil.size)
+
+    return heatmap, sim.item()
 
 
 def score_segments(img, text_emb):
@@ -70,10 +90,17 @@ def score_segments(img, text_emb):
     """
     img_np = np.array(img)
     
-    # segment using k-means
-    K = 10 #ne prend que les K segments les plus grands
-    label_img, centers = segment_kmeans(img_np, K=K)
-    masks = [(label_img == i).astype(np.uint8) for i in range(K)]
+    # segment using heatmap clustering
+    heatmap, sim_items = clip_heatmap(img, text_emb, clip_model, clip_preprocess, device)
+    heatmap_np = np.array(heatmap).astype(np.float32) / 255.0
+    H, W = heatmap_np.shape
+    n_segments = 7
+    X = heatmap_np.reshape(-1, 1)  # (H*W, 1)
+    kmeans = KMeans(n_clusters=n_segments, random_state=0).fit(X)
+    labels = kmeans.labels_.reshape(H, W)  # (H, W)
+    masks = [(labels == i).astype(np.uint8) for i in range(n_segments)] 
+
+    
 
     crops = []
     for mask in masks:
@@ -115,6 +142,44 @@ def _score_sectors(img, text_emb, K=7):
         sims = (img_feats @ text_emb.T).squeeze(1)                    # [K]
     return sims, boxes
 
+
+GOAL_SIM_THRESHOLD = 0.27
+GOAL_FRAMES_REQUIRED = 20    # number of consecutive frames before stopping
+_goal_counter = 0
+old_sims = None
+
+def object_too_close(sims):
+    sims_np = sims.cpu().numpy()
+    s_max = sims_np.max()
+    s_second = np.partition(sims_np, -2)[-2]
+    return (s_max - s_second) > 0.25
+
+
+def goal_reached(sims):
+    global _goal_counter, old_sims
+    max_sim = float(torch.max(sims).item())
+
+    # # id sudden drop in score object if very close 
+    if old_sims is not None:
+        if max_sim < GOAL_SIM_THRESHOLD and old_sims - max_sim > 0.02:
+            return True
+
+    # if score above threshold we increment counter
+    if max_sim >= GOAL_SIM_THRESHOLD:
+        _goal_counter += 1
+    else:
+        _goal_counter = 0
+
+    old_sims = max_sim
+
+    # if counter is above required frames we stop
+    if _goal_counter >= GOAL_FRAMES_REQUIRED:
+        _goal_counter = 0
+        return True
+
+    return False
+
+
 def _sector_to_cmd(sims, K, fov_deg=90.0, v_max=15.00, w_gain=7.5, conf_th=0.08):
     """
     sims: [K] cosine scores. Pick argmax -> bearing in [-FOV/2, +FOV/2] (radians).
@@ -138,8 +203,8 @@ def _sector_to_cmd(sims, K, fov_deg=90.0, v_max=15.00, w_gain=7.5, conf_th=0.08)
     return v, w, idx, conf
 
 SMOOTH_v = 0.15
-SMOOTH_w = 0.05
-K_SECTORS = 9
+SMOOTH_w = 0.03
+K_SECTORS = 5
 
 def _seg_to_cmd(sims, masks, fov_deg=120.0, v_max=15.0, w_gain=7.5, conf_th=0.08):
     """
@@ -167,13 +232,17 @@ def compute_next_cmd(v, w, camera_feed, prompt):
     if camera_feed is None:
         return 0.0, 0.0 # stop the robot if no camera feed
 
-    text_emb = _encode_text(prompt)  # text is global for efficiency
+    text_emb = _encode_text(prompt)  # text is global for efficiencycompute_next_cmd
 
     #converts the image and computes the sector scores
     pil = _to_pil(camera_feed)
-    #sims, _ = _score_sectors(pil, text_emb, K=K_SECTORS)
-    sims, masks = score_segments(pil, text_emb)
+    sims, masks = _score_sectors(pil, text_emb, K=K_SECTORS)
+    #sims, masks = score_segments(pil, text_emb)
     #print(sims)  #
+
+    if goal_reached(sims):
+        print("\n ---------- GOAL REACHED! ---------")
+        return 0.0, 0.0, sims, masks
 
     # Convert chosen sector to bearing & forward speed
     #spin if no positive matches
@@ -184,8 +253,8 @@ def compute_next_cmd(v, w, camera_feed, prompt):
         else:
             v_cmd, w_cmd, idx, conf = 0.0, 0.6, -1, 0.0
     else:
-        #v_cmd, w_cmd, idx, conf = _sector_to_cmd(sims, K=K_SECTORS, fov_deg=120.0)
-        v_cmd, w_cmd, idx, conf = _seg_to_cmd(sims, masks, fov_deg=120.0)
+        v_cmd, w_cmd, idx, conf = _sector_to_cmd(sims, K=K_SECTORS, fov_deg=120.0)
+        #v_cmd, w_cmd, idx, conf = _seg_to_cmd(sims, masks, fov_deg=120.0)
     print(f"Chosen sector: {idx}, v_cmd: {v_cmd:.2f}, w_cmd: {w_cmd:.2f}, conf: {conf:.2f}")
 
     # Smooth commands
@@ -245,7 +314,7 @@ def main():
         camera_feed = env.step(steps=30, cmd=(v, w), camera_feed=True)
         # plot the camera feed
         v,w, sims, masks = compute_next_cmd(v, w, camera_feed, prompt)
-        plot_camera_feed(camera_feed, sims, masks)
+        plot_camera_feed(camera_feed, sims)
 
 if __name__ == "__main__":
     try:
