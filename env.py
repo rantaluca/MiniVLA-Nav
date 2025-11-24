@@ -190,7 +190,7 @@ class DiffBotEnv:
                 orn = p.getQuaternionFromEuler([0, 0, yaw])
 
                 #Choose between URDF object or primitive shape
-                if self.rng.random() > 0.5 and object_urdfs:
+                if self.rng.random() > 0.7 and object_urdfs:
                     
                     # urdf object
                     urdf = self.rng.choice(object_urdfs)
@@ -258,7 +258,7 @@ class DiffBotEnv:
         # base
         base_col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[L/2, W/2, H/2])
         base_vis = p.createVisualShape(
-            p.GEOM_BOX, halfExtents=[L/2, W/2, H/2], rgbaColor=[0.45, 0.45, 0.4, 1]
+            p.GEOM_BOX, halfExtents=[L/2, W/2, H/2], rgbaColor=[196/255, 251/255, 42/255, 1]
         )
 
         # Position base 
@@ -447,6 +447,10 @@ def main():
     ap.add_argument("--arena", type=float, default=4.5, help="Arena size (m)")
     args = ap.parse_args()
 
+    if args.seed is None:
+        args.seed = int(time.time()) % 10000
+        print(f"Using random seed: {args.seed}")
+        
     scene = DiffBotEnv(
         gui=args.gui,
         seed=args.seed,
