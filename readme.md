@@ -37,15 +37,22 @@ The system uses **OpenAI CLIP (ViT-B/32)** to connect text and perception: the r
 The entire environment (robot, world, textures, and objects) is built procedurally in **PyBullet**.  
 The goal is to explore how a pretrained vision-language model can produce primitive navigation behavior without explicit object detection or reinforcement learning.
 
----
+<img src="minivla_nav_alg.png" width="900">
 
-## Key Characteristics
-
-- **Robot:** Differential-drive robot created procedurally (no URDF dependency)  
-- **Vision Language Model:** OpenAI CLIP (ViT-B/32) used as a perception backbone  
-- **Action Expert:** Simple cosine-based navigation (sector-wise scoring + smooth motion)  
-- **Goal:** Reach the visual area corresponding to a given natural-language prompt  
 ---
+## How It Works
+
+At each simulation step:
+
+1. The robot captures an RGB frame from its onboard camera.  
+2. The image is split into *K* vertical sectors.  
+3. Each sector is encoded using CLIP’s image encoder.  
+4. The cosine similarity with the text embedding determines relevance.  
+5. The sector with the highest score defines the heading.  
+6. Forward velocity is scaled by similarity confidence.  
+7. The robot moves smoothly toward the most semantically aligned region.
+
+This setup forms a **minimal VLA loop**: language → vision → action.
 
 ## Demo Gallery (GIFs)
 
@@ -62,80 +69,13 @@ The algorithm can also exhibit **exploratory behavior**, as illustrated in the *
 | <img src="demos/sauce.gif" width="400"><br/><sub><i>Prompt: "an object that contains sauce"</i></sub> | <img src="demos/sun.gif" width="400"><br/><sub><i>Prompt: "a ball that is the same color as the sun"</i></sub> |  |
 
 ---
-
-## How It Works
-
-At each simulation step:
-
-1. The robot captures an RGB frame from its onboard camera.  
-2. The image is split into *K* vertical sectors.  
-3. Each sector is encoded using CLIP’s image encoder.  
-4. The cosine similarity with the text embedding determines relevance.  
-5. The sector with the highest score defines the heading.  
-6. Forward velocity is scaled by similarity confidence.  
-7. The robot moves smoothly toward the most semantically aligned region.
-
-This setup forms a **minimal VLA loop**: language → vision → action.
-
----
-
-## Architecture Schema
-
-            +-----------------------------+
-            |        Text Prompt          |
-            |   e.g. "a red ball"         |
-            +-------------+---------------+
-                          |
-                          v
-            +-------------+---------------+
-            |     CLIP Text Encoder       |
-            |   (ViT-B/32 → embedding)    |
-            +-------------+---------------+
-                          |
-                          v
-    +----------------------------------------------+
-    |              CLIP Navigation Loop            |
-    | 1. Capture RGB frame                         |
-    | 2. Split into K vertical sectors              |
-    | 3. Encode each crop with CLIP Image Encoder   |
-    | 4. Compare to text embedding (cosine score)   |
-    | 5. Select argmax sector                      |
-    | 6. Compute (v, ω) commands                   |
-    +----------------------------------------------+
-                          |
-                          v
-            +-------------+-------------+
-            | PyBullet Differential Bot |
-            +-------------+-------------+
-                          |
-                          v
-            +-------------+-------------+
-            |  Environment Update (GUI) |
-            +---------------------------+
-
-
----
-
-## Parameters
-
-| Parameter | Description | Default |
-|------------|-------------|----------|
-| `K` | Number of image sectors | 9 |
-| `fov_deg` | Camera field of view | 120° |
-| `v_max` | Maximum forward velocity | 15.0 |
-| `w_gain` | Angular velocity gain | 7.5 |
-| `conf_th` | Confidence threshold | 0.08 |
-| `SMOOTH_v` | Velocity smoothing factor | 0.15 |
-| `SMOOTH_w` | Angular smoothing factor | 0.05 |
-
----
 ## Installation
-
+```sh
 git clone https://github.com/rantaluca/MiniVLA-NAV.git
 cd MiniVLA-NAV
 pip install pybullet torch torchvision matplotlib pillow
 pip install git+https://github.com/openai/CLIP.git
-
+```
 Python ≥ 3.9 is recommended.
 
 ---
@@ -143,15 +83,27 @@ Python ≥ 3.9 is recommended.
 ## Running the System
 
 ### To test the agent:
+```sh
 python main.py
-
+```
 Then type a prompt when requested, the prompt should be the target object description: "a red ball on the ground"
 
 ### To visualize the environment:
+```sh
 python env.py –gui –n_objects 20
+```
+---
 
+## Parameters
 
-
-## Notes
-- The project is intentionally lightweight: no RL training or external datasets.   
-- The world generation can be deterministic when a seed is provided.  
+| Parameter | Description | Default |
+|------------|-------------|----------|
+| `K` | Number of image sectors | 5 |
+| `fov_deg` | Camera field of view | 120° |
+| `v_max` | Maximum forward velocity | 15.0 |
+| `w_gain` | Angular velocity gain | 7.5 |
+| `conf_th` | Confidence threshold | 0.08 |
+| `SMOOTH_v` | Velocity smoothing factor | 0.15 |
+| `SMOOTH_w` | Angular smoothing factor | 0.03 |
+| `GOAL_SIM_THRESHOLD` | Goal found threshold | 0.27 |
+| `GOAL_FRAMES_REQUIRED` | Nb of frames before stopping| 20 |
