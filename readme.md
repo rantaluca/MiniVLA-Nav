@@ -56,7 +56,7 @@ This setup forms a **minimal VLA loop**: language → vision → action.
 
 ## Demo Gallery (GIFs)
 
-The project demonstrates strong performance on both **simple prompts** such as *"a red ball on the ground"*, where the robot consistently moves toward the target, and on **more abstract or relational prompts** like *"the opposite of an apple"* (successfully identifying a pear) or *"an object useful to drink coffee"* (finding a mug). It even generalizes to compositional descriptions such as *"a ball that has the same color as the sun"*, correctly selecting a yellow sphere.  
+The project demonstrates strong performance on both **simple prompts** such as *"a red ball on the ground"*, where the robot consistently moves toward the target, and on **more abstract or relational prompts** like *"the opposite of an apple"* (successfully identifying a pear) or *"an object useful to drink coffee"* (finding a mug). It even generalizes to compositional descriptions such as *"a ball that is the same color as the sun"*, correctly selecting a yellow sphere.  
 
 The algorithm can also exhibit **exploratory behavior**, as illustrated in the *"orange mug on the grass"* example, where the robot actively scans its surroundings to locate the object when it is not immediately visible.
 
